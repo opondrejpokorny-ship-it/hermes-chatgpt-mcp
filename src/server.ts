@@ -15,6 +15,26 @@ export interface HermesToolClient {
 }
 
 const safeAnnotations = { openWorldHint: false } as const;
+const readinessTimeoutMs = 2_000;
+
+function sendJson(response: import("node:http").ServerResponse, status: number, body: Record<string, string>) {
+  response.writeHead(status, { "content-type": "application/json" }).end(JSON.stringify(body));
+}
+
+async function isHermesReady(hermesApiUrl: URL): Promise<boolean> {
+  try {
+    const healthUrl = new URL("/health", hermesApiUrl.origin);
+    const response = await fetch(healthUrl, {
+      redirect: "error",
+      signal: AbortSignal.timeout(readinessTimeoutMs),
+    });
+    if (response.status !== 200) return false;
+    const body: unknown = await response.json();
+    return typeof body === "object" && body !== null && (body as { status?: unknown }).status === "ok";
+  } catch {
+    return false;
+  }
+}
 
 function textResult(value: unknown) {
   const structuredContent = value as Record<string, unknown>;
@@ -149,6 +169,16 @@ export async function startHttpServer(config: AdapterConfig, client: HermesToolC
     }
 
     const path = new URL(request.url ?? "/", "http://127.0.0.1").pathname;
+    if (request.method === "GET" && path === "/healthz") {
+      sendJson(response, 200, { status: "ok" });
+      return;
+    }
+    if (request.method === "GET" && path === "/readyz") {
+      void isHermesReady(config.hermesApiUrl).then((ready) => {
+        sendJson(response, ready ? 200 : 503, { status: ready ? "ready" : "not_ready" });
+      });
+      return;
+    }
     if (path !== "/mcp") {
       response.writeHead(404).end();
       return;

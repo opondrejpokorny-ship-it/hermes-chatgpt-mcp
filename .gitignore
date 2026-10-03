@@ -4,3 +4,7 @@ dist/
 .env.*
 *.log
 logs/
+*.dpapi
+*.secret
+HermesMcp/
+tunnel-profiles/
