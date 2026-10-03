@@ -122,6 +122,23 @@ test("Windows health output allowlists tunnel runtime status fields", { skip: !w
   }
 });
 
+test("Windows supervisor direct file invocation resolves its default adapter path after binding", { skip: !windowsOnly }, async () => {
+  const stateRoot = await mkdtemp(join(tmpdir(), "hermes-mcp-runtime-default-adapter-"));
+  try {
+    await assert.rejects(
+      execFileAsync("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", join(scripts, "Start-HermesMcpRuntime.ps1"), "-StateRoot", stateRoot, "-Once"], { windowsHide: true }),
+      (error: { code?: number; stdout?: string; stderr?: string }) => {
+        assert.equal(error.code, 2, error.stderr);
+        assert.deepEqual(JSON.parse(error.stdout ?? ""), { overall: "degraded" });
+        assert.doesNotMatch(error.stderr ?? "", /Split-Path|PSScriptRoot/i);
+        return true;
+      },
+    );
+  } finally {
+    await rm(stateRoot, { recursive: true, force: true });
+  }
+});
+
 test("Windows supervisor once mode does not invoke tunnel status or connect before adapter readiness", { skip: !windowsOnly }, async () => {
   const stateRoot = await mkdtemp(join(tmpdir(), "hermes-mcp-unready-"));
   const gateway = await startHealthServer({ status: "ok" });
