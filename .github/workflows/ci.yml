@@ -30,7 +30,8 @@ jobs:
       - run: npm run build
 
   test-windows:
-    runs-on: windows-latest
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: [self-hosted, Windows, X64, hermes-chatgpt-mcp, cube-309]
     timeout-minutes: 10
     defaults:
       run:
