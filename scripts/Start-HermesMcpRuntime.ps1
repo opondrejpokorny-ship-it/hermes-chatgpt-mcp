@@ -1,10 +1,11 @@
 [CmdletBinding()]
 param(
   [string] $StateRoot = (Join-Path $env:LOCALAPPDATA 'HermesMcp'), [switch] $Once, [int] $RetrySeconds = 15,
-  [string] $HermesRoot = (Join-Path $env:LOCALAPPDATA 'hermes'), [string] $NodePath = 'node.exe', [string] $AdapterEntryPath = (Join-Path (Split-Path $PSScriptRoot -Parent) 'dist\index.js'),
+  [string] $HermesRoot = (Join-Path $env:LOCALAPPDATA 'hermes'), [string] $NodePath = 'node.exe', [string] $AdapterEntryPath = '',
   [ValidateRange(1,120)][int] $TunnelTimeoutSeconds = 20, [ValidateRange(1,120)][int] $TunnelReadyWaitSeconds = 15, [ValidateRange(10,5000)][int] $HealthPollMilliseconds = 250, [ValidateRange(1,120)][int] $AdapterReadyWaitSeconds = 10, [ValidateRange(0,100000)][int] $MaxCycles = 0
 )
 $ErrorActionPreference = 'Stop'
+if ([string]::IsNullOrWhiteSpace($AdapterEntryPath)) { $AdapterEntryPath = Join-Path (Split-Path $PSScriptRoot -Parent) 'dist\index.js' }
 function Assert-RuntimeConfig($c) { if ([string]$c.tunnel_id -notmatch '^tunnel_[A-Za-z0-9_-]{6,}$') { throw 'Invalid tunnel ID.' }; foreach ($n in @('alias','profile')) { if ([string]$c.$n -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$') { throw "Invalid $n." } }; $p=[string]$c.tunnel_client_path; if ([string]::IsNullOrWhiteSpace($p) -or -not [IO.Path]::IsPathRooted($p) -or $p.IndexOfAny([char[]]"`"`r`n") -ge 0 -or [IO.Path]::GetExtension($p) -notin @('.exe','.ps1')) { throw 'Invalid tunnel client path.' }; foreach ($n in @('adapter_url','gateway_url')) { $u=[uri]$c.$n; $ip=$null; if ($u.Scheme -notin @('http','https') -or -not [Net.IPAddress]::TryParse($u.Host,[ref]$ip) -or -not [Net.IPAddress]::IsLoopback($ip) -or -not [string]::IsNullOrEmpty($u.UserInfo) -or $u.AbsolutePath -ne '/' -or -not [string]::IsNullOrEmpty($u.Query) -or -not [string]::IsNullOrEmpty($u.Fragment)) { throw "Invalid $n." } } }
 function Test-Health([string]$Url,[string]$Wanted) { try { $r=Invoke-WebRequest -UseBasicParsing -Uri $Url -MaximumRedirection 0 -TimeoutSec 2; return $r.StatusCode -eq 200 -and (($r.Content|ConvertFrom-Json).status -eq $Wanted) } catch { return $false } }
 function Wait-Health([string]$Url,[string]$Wanted,[int]$Seconds) { $until=[DateTime]::UtcNow.AddSeconds($Seconds); do { if(Test-Health $Url $Wanted){return $true}; Start-Sleep -Milliseconds $HealthPollMilliseconds } while([DateTime]::UtcNow -lt $until); return $false }
